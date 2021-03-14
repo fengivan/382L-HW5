@@ -1,0 +1,416 @@
+<html>
+    <head>
+        <meta charset = "utf-8">
+        <title> HW4 Part 1</title>
+        <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+        <script src=https://cdnjs.cloudflare.com/ajax/libs/mathjs/8.1.1/math.js></script>
+        <style>
+            table, th, td 
+            {
+                border: 2px solid black;
+            }
+            .legend
+            {
+                font-weight:bold;
+            }
+            table 
+            {
+                width: 25%;
+                border-collapse: collapse;
+            }
+            #chart_div
+            {
+                width:1600px;
+                height:1000px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="problem">  </div>
+    </body>
+
+    <script>
+        init();
+
+        let deltax=parseFloat(document.getElementById("deltax").value);
+        let deltat=parseFloat(document.getElementById("deltat").value);
+        let timesteps=Math.round(1.5/deltat);
+        let xsteps=Math.round(1/deltax);
+
+        let temp=numeric();                     //calculates the numeric solutions 
+        let grid=temp[0];                       //grid is the U solution
+        let grid2=temp[1];                      //grid 2 is the V solution
+        function init()                         //initalizes elements
+        {
+            let linebreak = document.createElement("br");
+            let prob = document.getElementById("problem");
+            let probDescription = document.createElement("div");
+            probDescription.innerHTML="Solution to given system of PDEs, fully implicit method ";
+            prob.appendChild(probDescription);
+            prob.appendChild(linebreak.cloneNode(true));
+            let deltaxlabel=document.createElement("label");                //adding text desciriptions 
+            deltaxlabel.innerHTML="Delta X: ";
+            let deltaxinput=document.createElement("input");
+            deltaxinput.setAttribute("type", "text");
+            deltaxinput.id="deltax";
+            deltaxinput.value=1/20;
+            deltaxinput.readOnly=true;
+            prob.appendChild(deltaxlabel);
+            prob.appendChild(deltaxinput);
+            prob.appendChild(linebreak.cloneNode(true));
+            let deltatlabel=document.createElement("label");
+            deltatlabel.innerHTML="Delta T: ";
+            let deltatinput=document.createElement("input");
+            deltatinput.id="deltat";
+            deltatinput.setAttribute("type", "text");
+            deltatinput.value=1/20;
+            deltatinput.readOnly=true;
+            prob.appendChild(deltatlabel);
+            prob.appendChild(deltatinput);
+            prob.appendChild(linebreak.cloneNode(true));
+            let createBtn = document.createElement("button");                   //adding buttons and event listeners
+            createBtn.innerHTML = "Show U Grid";
+            createBtn.addEventListener("click", fillTableU);
+            prob.appendChild(createBtn);
+            let createBtn2 = document.createElement("button");                   //adding buttons and event listeners
+            createBtn2.innerHTML = "Show V Grid";
+            createBtn2.addEventListener("click", fillTableV);
+            prob.appendChild(createBtn2);
+
+            let showResults = document.createElement("button");                   
+            showResults.innerHTML = "Show Results at T=1.5";
+            showResults.addEventListener("click", fillResults);
+            prob.appendChild(showResults);
+            let graphBtn = document.createElement("button");
+            graphBtn.innerHTML="Show Graph of U and V at T=1.5";
+            graphBtn.addEventListener("click", showGraph);
+            prob.appendChild(graphBtn);
+
+            let clearBtn = document.createElement("button");
+            clearBtn.innerHTML="Clear";
+            clearBtn.addEventListener("click", clear);
+            prob.appendChild(clearBtn);
+        }
+
+        function showGraph()                    //draws a graph of the numeric and exact solutions at T=1.5
+        {
+            clear();
+            let chartdiv=document.createElement("div");
+            chartdiv.id="chart_div";
+            let prob = document.getElementById("problem");
+            prob.appendChild(chartdiv);
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(drawChart);
+        }
+
+        function drawChart()                    //helper function
+        {
+            let values=[];
+            values.push(["X", "U", "V"]);
+            
+            for(let i = 0; i<grid.length; i++)
+                values.push([i*deltax, grid[grid.length-1][i], grid2[grid2.length-1][i]]);
+            
+            let data = google.visualization.arrayToDataTable(values);
+            let options = {
+            title: 'Numerical Solutions to U and V at T=1.5',
+            legend: {position: 'bottom'},
+            hAxis: {title: 'X'},
+            vAxis: {title: 'Value'},
+            };
+            let chart = new google.visualization.LineChart(document.getElementById("chart_div"));
+            chart.draw(data, options);
+        }
+
+        function clear()                                //clears everything
+        {
+            if(document.getElementById("table"))
+                document.getElementById("table").remove();
+            if(document.getElementById("chart_div"))
+                document.getElementById("chart_div").remove();
+            if(document.getElementById("error"))
+                document.getElementById("error").remove();
+        }
+
+        function solvematrixU(x)                        //solves for U at the next timestep, given U at the current timestep
+        {
+            let c = [0];                                //create arrays for the 3 diagonals
+            let b = [1];
+            let a=  [1/deltax];
+            for(let i =1; i<x.length; i++)
+            {
+                c.push(0);                              //tridiagonal matrix coefficients 
+                b.push(-1/deltat-1/deltax);
+                a.push(1/deltax);
+            }
+            return thomasalgo(a, b, c, x, x.length);    //calls solver and returns the solution
+        }
+
+        function solvematrixV(x)                        //solves for V at the next timestep, given V at the current timestep
+        {
+            let c = [.5/deltax];                        //create arrays for the 3 diagonals
+            let b = [-.5/deltax-1/deltat];
+            let a=  [0];
+            for(let i =1; i<x.length; i++)
+            {
+                c.push(.5/deltax);                      //tridiagonal matrix coefficients 
+                b.push(-.5/deltax-1/deltat);
+                a.push(0);
+                if(i==x.length-1)
+                {
+                    b[i]=1;
+                    a[i]=0;
+                }
+            }
+            return thomasalgo(a, b, c, x, x.length);    //calls solver and returns the solution
+        }
+
+        function thomasalgo(a, b, c, d, n)
+        {
+            let cprime=[];
+            let dprime=[];
+            for(let i =0; i<n; i++)
+            {
+                if(i==0)
+                {   
+                    cprime.push(c[i]/b[i]);
+                    dprime.push(d[i]/b[i]);
+                }
+                else
+                {
+                    if(i!=n)
+                        cprime.push(c[i]/(b[i]-a[i]*cprime[i-1]));
+                    dprime.push((d[i]-a[i]*dprime[i-1])/(b[i]-a[i]*cprime[i-1]));
+                }
+            }
+            let xsol=[];
+            for(let i=0; i<n; i++)
+                xsol.push(0);
+            
+            xsol[n-1]=dprime[n-1];
+            for(let i=n-2; i>=0; i--)
+                xsol[i]=dprime[i]-cprime[i]*xsol[i+1];
+            
+            return xsol;
+        }
+
+        function numeric()                              //calculates and stores the numerical solution
+        {
+            let gridU=[];                               //2D array containing the values of U at all x and t
+            let gridV=[];                               //2D array containing the values of V at all x and t
+            let currentU=[];                            //array containing the values of U at the current timestep
+            let currentV=[]                             //array containing the values of U at the current timestep
+
+            for(let i =0; i<xsteps+1; i++)              //initialize t=0 boundry conditions
+                {
+                    currentU.push(0);
+                    currentV.push(0);
+                }
+            currentU[0]=1;                              //boundry condition correction for U
+
+            gridU.push(currentU);                       //adds the first row to the U grid
+            gridV.push(currentV);                       //adds the first row to the V grid
+
+            for(let n =0; n<timesteps; n++)             //iterate through all the timesteps
+            {    
+                let right = [];                         //array for the right vector
+                for(let i =0; i<xsteps+1; i++)          //loop that sets the values for the right vector to calculate U 
+                {
+                    if(i==0)                            //x=0 boundry condition
+                        right.push(1); 
+                    else        
+                        right.push(currentU[i]*(.05-1/deltat)-.05*currentV[i]);      
+                }
+                currentU = solvematrixU(right);         //calculates the value of U at the current timestep
+
+                right=[];
+
+                for(let i =0; i<xsteps+1; i++)          //loop that sets the values for the right vector to calculate V
+                {
+                    if( i==xsteps)
+                        right.push(0);                  //x==1 boundry condition
+                    else
+                        right.push(currentV[i]*(.05-1/deltat)+currentU[i]*(-.05));      //uses the value of U just calcualted
+                    
+                }
+                currentV =solvematrixV(right);          //solves for V at current timestep
+                gridU.push(currentU);
+                gridV.push(currentV);                   //adds solutions to the grid
+            }
+            return [gridU, gridV];                      //returns both solutions
+        }
+
+        function fillResults()                  //creates a table and fills it with the numerical solutions for U and V at t=1.5
+        {
+            clear();
+            let prob = document.getElementById("problem");
+            let table = document.createElement("table");
+            table.id="table";
+
+            let firstrow= document.createElement("tr");
+            let xlabel=document.createElement("td");
+            xlabel.innerHTML="X Value";
+            xlabel.classList.add("legend");
+            firstrow.appendChild(xlabel);
+
+            let Ulabel=document.createElement("tr");
+            Ulabel.innerHTML="U";
+            Ulabel.classList.add("legend");
+            firstrow.appendChild(Ulabel);
+
+            let Vlabel=document.createElement("td");
+            Vlabel.innerHTML="V";
+            Vlabel.classList.add("legend");
+            firstrow.appendChild(Vlabel);
+
+            table.appendChild(firstrow);
+
+            for(let i=0; i<grid[grid.length-1].length; i++)
+            {
+                let row= document.createElement("tr");
+                let xval=document.createElement("td");
+                xval.innerHTML=(i*deltax).toFixed(3);
+                let Usolu=document.createElement("td");
+                Usolu.innerHTML=(grid[grid.length-1][i]).toFixed(7);
+                let Vsolu=document.createElement("td");
+                Vsolu.innerHTML=(grid2[grid2.length-1][i]).toFixed(7);
+
+                row.appendChild(xval);
+                row.appendChild(Usolu);
+                row.appendChild(Vsolu);
+                table.appendChild(row);
+            }
+            prob.appendChild(table);
+        }
+
+        function fillTableU()                    //creates a table and fills table with the numeric solution for U
+        {
+            clear();
+            let prob = document.getElementById("problem");
+          
+            let table = document.createElement("table");
+            table.id="table";
+
+            let firstrow= document.createElement("tr");
+            let blank = document.createElement("td");
+            blank.innerHTML=" ";
+            firstrow.appendChild(blank);
+            
+            let xlabel=document.createElement("td");
+            xlabel.innerHTML="X Value";
+            xlabel.classList.add("legend");
+            firstrow.appendChild(xlabel);
+
+            let secondrow = document.createElement("tr");
+            let timelabel=document.createElement("td");
+            timelabel.innerHTML="Time";
+            timelabel.classList.add("legend");
+            secondrow.appendChild(timelabel);
+            let nodelabel=document.createElement("td");
+            nodelabel.innerHTML="Node";
+            nodelabel.classList.add("legend");
+            secondrow.appendChild(nodelabel);
+
+            for(i=0; i<grid[0].length; i++)
+            {
+                let temp=document.createElement("td");
+                let temp2=document.createElement("td");
+                temp.innerHTML=(i*deltax).toFixed(3);
+                temp2.innerHTML=i;
+                temp.classList.add("legend");
+                temp2.classList.add("legend");
+                firstrow.appendChild(temp);
+                secondrow.appendChild(temp2);
+            }
+            table.appendChild(firstrow);
+            table.appendChild(secondrow);
+
+            for(a=0; a<grid.length; a=a+1)
+            {    
+                let row= document.createElement("tr");
+                let time=document.createElement("td");
+                time.innerHTML= (a*deltat).toFixed(3);
+                time.classList.add("legend");
+                let timenode=document.createElement("td");
+                timenode.innerHTML=a;
+                timenode.classList.add("legend");
+                row.appendChild(time);
+                row.appendChild(timenode);
+                for(b=0; b<grid[a].length; b++)
+                {
+                    let xBox=document.createElement("td");
+                    xBox.innerHTML=(grid[a][b]).toFixed(4);
+                    row.appendChild(xBox);
+                }
+                table.appendChild(row);
+            }
+            prob.appendChild(table);
+        }
+
+        function fillTableV()                    //creates a table and fills table with the numeric solution for V
+        {
+            clear();
+            let prob = document.getElementById("problem");
+          
+            let table = document.createElement("table");
+            table.id="table";
+
+            let firstrow= document.createElement("tr");
+            let blank = document.createElement("td");
+            blank.innerHTML=" ";
+            firstrow.appendChild(blank);
+            
+            let xlabel=document.createElement("td");
+            xlabel.innerHTML="X Value";
+            xlabel.classList.add("legend");
+            firstrow.appendChild(xlabel);
+
+            let secondrow = document.createElement("tr");
+            let timelabel=document.createElement("td");
+            timelabel.innerHTML="Time";
+            timelabel.classList.add("legend");
+            secondrow.appendChild(timelabel);
+            let nodelabel=document.createElement("td");
+            nodelabel.innerHTML="Node";
+            nodelabel.classList.add("legend");
+            secondrow.appendChild(nodelabel);
+
+            for(i=0; i<grid[0].length; i++)
+            {
+                let temp=document.createElement("td");
+                let temp2=document.createElement("td");
+                temp.innerHTML=(i*deltax).toFixed(3);
+                temp2.innerHTML=i;
+                temp.classList.add("legend");
+                temp2.classList.add("legend");
+                firstrow.appendChild(temp);
+                secondrow.appendChild(temp2);
+            }
+            table.appendChild(firstrow);
+            table.appendChild(secondrow);
+
+            for(a=0; a<grid.length; a=a+1)
+            {    
+                let row= document.createElement("tr");
+                let time=document.createElement("td");
+                time.innerHTML= (a*deltat).toFixed(3);
+                time.classList.add("legend");
+                let timenode=document.createElement("td");
+                timenode.innerHTML=a;
+                timenode.classList.add("legend");
+                row.appendChild(time);
+                row.appendChild(timenode);
+                for(b=0; b<grid[a].length; b++)
+                {
+                    let xBox=document.createElement("td");
+                    xBox.innerHTML=(grid2[a][b]).toFixed(4);
+                    row.appendChild(xBox);
+                }
+                table.appendChild(row);
+            }
+            prob.appendChild(table);
+        }
+
+    </script>
+</html>
